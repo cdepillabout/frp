@@ -51,6 +51,14 @@ eventAt10syo times = foldr f [] times
         | otherwise                = Nothing                : accum
 
 
+lift0 :: a -> Behavior a
+lift0 x times = map (\t -> x) times
+
+------------------
+-- Church Stuff --
+------------------
+
+
 -- foldr :: (a -> b -> b) -> b -> [a] -> b
 -- foldr :: (a -> [b] -> [b]) -> [b] -> [a] -> [b]
 -- foldr :: (a -> String -> String) -> String -> [a] -> String
@@ -76,7 +84,7 @@ two f x = f (f x)
 
 data ChurchList a = ChurchList (forall r . (a -> r -> r) -> r -> r)
 
-evalChurchList :: (Int -> String -> String) -> String -> ChurchList Int -> String
+-- evalChurchList :: (Int -> String -> String) -> String -> ChurchList Int -> String
 evalChurchList :: (a -> r -> r) -> r -> ChurchList a -> r
 evalChurchList combiner start (ChurchList f) = f combiner start
 
