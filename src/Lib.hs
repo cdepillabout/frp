@@ -1,8 +1,11 @@
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Lib
     where
+
+import Control.Monad
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
@@ -97,3 +100,26 @@ listToChurchList (x:xs) = x `cons` listToChurchList xs
 
 cons :: a -> ChurchList a -> ChurchList a
 cons a (ChurchList f) = ChurchList (\combiner start -> combiner a (f combiner start))
+
+----------------
+-- List Stuff --
+----------------
+
+data MyType a = MyType { unMyType :: [Float] -> [a] }
+
+instance Functor MyType where
+    fmap :: (a -> b) -> MyType a -> MyType b
+    fmap f (MyType mytype) = MyType $ \floats -> fmap f $ mytype floats
+
+instance Applicative MyType where
+    pure :: a -> MyType a
+    pure x = MyType $ \floats -> fmap (const x) floats
+
+    (<*>) :: MyType (a -> b) -> MyType a -> MyType b
+    (MyType fs) <*> (MyType as) = MyType $ \floats -> zipWith ($) (fs floats) (as floats)
+
+instance Monad MyType where
+    return = pure
+
+    (>>=) :: MyType a -> (a -> MyType b) -> MyType b
+    (MyType ma) >>= k = MyType $ \floats -> join $ fmap (\a -> unMyType (k a) floats) (ma floats)
