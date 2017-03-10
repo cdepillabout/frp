@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
@@ -5,6 +7,7 @@
 module Lib
     where
 
+import Control.Applicative
 import Control.Monad
 
 someFunc :: IO ()
@@ -23,14 +26,14 @@ foo a b = case divide a b of
 
 
 type Time = Float
-type Behavior a = [Time] -> [a]
-type Event a = [Time] -> [Maybe a]
+newtype Behavior a = Behavior { unBehavior :: [Time] -> [a] } deriving Functor
+newtype Event a = Event { unEvent :: [Time] -> [Maybe a] } deriving Functor
 
 at :: Behavior a -> [Time] -> a
-at behavior times = last (behavior times)
+at (Behavior behavior) times = last (behavior times)
 
 occ :: forall a . Event a -> [Time] -> [(Time, a)]
-occ event times = foldr combiner [] timedEvents
+occ (Event event) times = foldr combiner [] timedEvents
   where
     timedEvents :: [(Time, Maybe a)]
     timedEvents = zip times $ event times
@@ -40,13 +43,13 @@ occ event times = foldr combiner [] timedEvents
     combiner (t, Just a) accum  = (t, a) : accum
 
 five :: Behavior Float
-five times = map (const 5) times
+five = Behavior $ \time -> map (const 5) time
 
-yotime :: Behavior Time
-yotime x = x
+time :: Behavior Time
+time = Behavior id
 
 eventAt10syo :: Event Int
-eventAt10syo times = foldr f [] times
+eventAt10syo = Event $ \times -> foldr f [] times
   where
     f :: Time -> [Maybe Int] -> [Maybe Int]
     f t accum
@@ -54,8 +57,79 @@ eventAt10syo times = foldr f [] times
         | otherwise                = Nothing                : accum
 
 
+instance Applicative Behavior where
+    pure :: a -> Behavior a
+    pure a = Behavior $ fmap (const a)
+
+    (<*>) :: Behavior (a -> b) -> Behavior a -> Behavior b
+    (Behavior f) <*> (Behavior a) = Behavior $ \ts -> f ts <*> a ts
+
+
+($*) :: Behavior (a -> b) -> Behavior a -> Behavior b
+($*) = (<*>)
+
 lift0 :: a -> Behavior a
-lift0 x times = map (\t -> x) times
+lift0 = pure
+
+lift1 :: (a -> b) -> Behavior a -> Behavior b
+lift1 = fmap
+
+lift2 :: (a -> b -> c) -> Behavior a -> Behavior b -> Behavior c
+lift2 = liftA2
+
+instance Num a => Num (Behavior a) where
+    (+) = liftA2 (+)
+    (-) = liftA2 (-)
+    (*) = liftA2 (*)
+    abs = fmap abs
+    signum = fmap signum
+    fromInteger = pure . fromInteger
+
+instance (Fractional a) => Fractional (Behavior a) where
+    fromRational = pure . fromRational
+    (/) = liftA2 (/)
+
+instance Floating a => Floating (Behavior a) where
+    pi = pure pi
+    exp = fmap exp
+    log = fmap log
+    sqrt = fmap sqrt
+    (**) = liftA2 (**)
+    logBase = liftA2 logBase
+    sin = fmap sin
+    cos = fmap cos
+    tan = fmap tan
+    asin = fmap asin
+    acos = fmap acos
+    atan = fmap atan
+    sinh = fmap sinh
+    cosh = fmap cosh
+    tanh = fmap tanh
+    asinh = fmap asinh
+    acosh = fmap acosh
+    atanh = fmap atanh
+
+
+integral :: Behavior Float -> Behavior Float
+integral (Behavior behavior) =
+    Behavior $ \ts@(t:ts') -> reverse . third . foldr f (t, 0, [0]) $ zip ts' (behavior ts)
+  where
+    f :: (Float, Time) -> (Time, Float, [Float]) -> (Time, Float, [Float])
+    f (t1, a) (t0, acc, list) =
+        let acc' = acc + (t1 - t0) * a
+        in (t1, acc', acc' : list)
+
+    third :: (a, b, c) -> c
+    third (a, b, c) = c
+
+(.|.) :: Event a -> Event a -> Event a
+Event a .|. Event b = Event $ \ts -> zipWith (<|>) (a ts) (b ts)
+
+(==>) :: Event a -> (a -> b) -> Event b
+(==>) = flip fmap
+
+(-=>) :: Event a -> a -> Event a
+eventA -=> b = eventA ==> const b
 
 ------------------
 -- Church Stuff --
